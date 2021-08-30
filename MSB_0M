@@ -1,0 +1,96 @@
+! ****************************************************************************
+! * Program: MSB_0M
+! * *EASY
+! * Description: Perform basic math with [var1] [symbol +-/*] FVAL$ = FVAL$.
+! * Created By: DAKCS Software Systems, Inc. sss
+! * Variable: 1
+! * Symbols: 1
+! *
+! * ENTER Parameters:
+! * TD  - tape drop #
+! * MSCH    - 3/MAGSPL.xxxx@ channel #
+! * FN  - the field number
+! * FLET$   - the current field mag ltr
+! * FVAL$   - the current field value
+! * BUF$    - the entire client's record.
+! * XCLT$   - the client number (user input).
+! * STATUS  - error flags
+! *
+! * STATUS Values:
+! *     0   - successful operation
+! *     1   - Invalid symbol
+! *     2   - Cannot open MAGSUBS@.
+! ****************************************************************************
+IF ERR 0 GOTO ERR_HANDLER
+INCLUDE "calls/FGLOBALS"                                  ! ADMLAYOUT stuff...
+DIM DM%,MSV!                                                    ! structure pointers
+DIM XWHO$[40]
+XWHO$="magsubs/MSB_0M"                                        ! who we are...
+ENTER TD,MSCH,FN,FLET$,FVAL$,BUF$,XCLT$,STATUS      ! get 'em in here!
+DO_DIMS:
+    DIM 4%,FVAL,TMP
+    DIM XFILE$[200],TMP$[100],V$[80],VC$[80]
+    DIM MAGLTR$[1],OURSUB$[4],XVAR$[3],XSYM$[20]
+    DIM 3%
+DO_SETS:
+    STATUS=0                                                        ! no errors...yet!
+    OURSUB$="0M"
+    CALL "GETCOLLNO",OURSUB$,OURSUB,RET
+    OURSUB$=OURSUB USING "&&&&"
+DO_OPENS:
+    XFILE$="3/MAGSUBS@"
+    MSVCH=-1                                                        ! next avail. channel
+    CALL "FOPEN",MSV!,MSVCH,XFILE$,RET                    ! the subroutine master
+    IF RET<>0
+        CALL $PCORE,""
+        STATUS=2
+        GOTO COMMON_EXIT                                        ! outa here!
+    ENDIF
+    RS=MSV!.FIELD[0,1]                                      ! get the record size
+    DIM MSV$[RS]                                                ! dim it to size...
+MAIN_PART:
+    GOSUB FIND_MAGSUB                                           ! subroutine number...
+    GOSUB PERFORM_MATH                                      ! do the math
+GOTO COMMON_EXIT
+COMMON_EXIT:
+    CLOSE #MSVCH                                                ! close the sub master
+END                                                             ! back to the main prog
+FIND_MAGSUB:
+    V$=TD USING "&&&&",FN USING "&&&&",OURSUB$      ! the index
+    SEARCH #MSV!.CHAN,2,1;V$,V1,BAD
+    IF NOT BAD
+        MAT READ #MSV!.CHAN,V1,0;MSV$;                  ! get the record
+    ELSE
+        STOP                                                        ! you did something wrong
+    ENDIF
+    CALL "SFROMFIELD",MSV!,4,XVAR$,MSV$                   ! variable 1
+    CALL "SFROMFIELD",MSV!,12,XSYM$,MSV$              ! symbol 1
+RETURN
+PERFORM_MATH:
+    FLD=XVAR$[2]                                                ! field number to pull from
+    CALL "SFROM_MS",MSCH,XVAR$[1,1],FLD,TMP$
+    AMT=TMP$                                                        ! get the second amount
+    FVAL=FVAL$
+    IF XSYM$="+"                                              ! add
+        TMP=AMT+FVAL
+    ELSE IF XSYM$="-"                                         ! subtract
+        TMP=AMT-FVAL
+    ELSE IF XSYM$="/"                                         ! divide
+        TMP=AMT/FVAL
+    ELSE IF XSYM$="*"                                         ! multiple
+        TMP=AMT*FVAL
+    ELSE
+        STATUS=1                                                    ! throw error
+        TMP$="UNKNOWN SYMBOL: ",XSYM$
+        CALL "OKBOX",TMP$,5,5
+    ENDIF
+    NEWNUMBER=INT(TMP*100+.5)/100                           ! round it
+    FVAL$=NEWNUMBER                                         ! assign the value
+    CALL $RSPCS,FVAL$,FVAL$,0
+RETURN
+ERR_HANDLER:
+    CALL $PCORE,""                                                ! generate a pcore file
+    S8=SPC(8)                                                   ! error #
+    S10=SPC(10)                                                 ! error line
+    CALL "GERROR",S8,S10,XWHO$                                ! show 'em the error
+! PROGRAM: magsubs/MSB_0M
